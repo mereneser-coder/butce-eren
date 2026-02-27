@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,14 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>İnce Memed Bütçe</title>
 <style>
-body { font-family: Arial; padding: 20px; background:#f4f4f4;}
-.container { max-width:400px; margin:auto; background:white; padding:20px; border-radius:10px;}
+body { font-family: Arial; padding: 20px; background:#f2f2f2;}
+.container { max-width:500px; margin:auto; background:white; padding:20px; border-radius:12px;}
 input, button, select { width:100%; padding:10px; margin:5px 0;}
-button { background:black; color:white; border:none;}
+button { background:black; color:white; border:none; border-radius:6px;}
 .list { margin-top:15px;}
-.item { display:flex; justify-content:space-between; margin:5px 0;}
+.item { display:flex; justify-content:space-between; margin:5px 0; padding:8px; border-bottom:1px solid #ddd;}
 .income { color:green;}
 .expense { color:red;}
+.summary { margin-top:15px; padding:10px; background:#f9f9f9; border-radius:8px;}
+.small { font-size:12px; color:#666;}
+.danger { background:#b00020; }
+.export { background:#0066cc; }
+.limitBox { background:#fff3f3; padding:8px; margin:5px 0; border-radius:6px;}
+.warning { color:#b00020; font-weight:bold; }
+.ok { color:green; }
 </style>
 </head>
 <body>
@@ -27,80 +33,198 @@ button { background:black; color:white; border:none;}
 <div class="container" id="app" style="display:none;">
 <h2>İnce Memed Bütçe</h2>
 
+<label>Tarih</label>
+<input type="date" id="date">
+
+<label>Açıklama</label>
 <input type="text" id="desc" placeholder="Açıklama">
+
+<label>Tutar</label>
 <input type="number" id="amount" placeholder="Tutar">
+
+<label>Tür</label>
 <select id="type">
 <option value="income">Gelir</option>
 <option value="expense">Gider</option>
 </select>
+
+<label>Kategori</label>
+<select id="category">
+<option value="Maaş">Maaş</option>
+<option value="Market">Market</option>
+<option value="Fatura">Fatura</option>
+<option value="Kira">Kira</option>
+<option value="Yakıt">Yakıt</option>
+<option value="Diğer">Diğer</option>
+</select>
+
 <button onclick="addItem()">Ekle</button>
 
-<h3>Toplam: <span id="total">0</span> ₺</h3>
+<hr>
+
+<label>Ay Seç</label>
+<input type="month" id="monthFilter" onchange="loadData()">
+
+<label>Kategori Filtre</label>
+<select id="categoryFilter" onchange="loadData()">
+<option value="">Tümü</option>
+<option value="Maaş">Maaş</option>
+<option value="Market">Market</option>
+<option value="Fatura">Fatura</option>
+<option value="Kira">Kira</option>
+<option value="Yakıt">Yakıt</option>
+<option value="Diğer">Diğer</option>
+</select>
+
+<h3>Kategori Bütçe Limitleri</h3>
+<div id="limitSection"></div>
+
+<div class="summary">
+<p>Toplam Gelir: <span id="totalIncome">0</span> ₺</p>
+<p>Toplam Gider: <span id="totalExpense">0</span> ₺</p>
+<h3>Kalan: <span id="balance">0</span> ₺</h3>
+</div>
 
 <div class="list" id="list"></div>
 
+<button class="export" onclick="exportExcel()">Excel'e Aktar</button>
+<button class="danger" onclick="resetData()">Tüm Verileri Sil</button>
 <button onclick="logout()">Çıkış</button>
+
 </div>
 
 <script>
 const correctPassword = "1234";
+const categories = ["Maaş","Market","Fatura","Kira","Yakıt","Diğer"];
 
 function login(){
   const pass = document.getElementById("password").value;
   if(pass === correctPassword){
     document.getElementById("loginBox").style.display="none";
     document.getElementById("app").style.display="block";
+    document.getElementById("monthFilter").value = new Date().toISOString().slice(0,7);
+    loadLimitsUI();
     loadData();
   } else {
     alert("Şifre yanlış");
   }
 }
 
-function logout(){
-  document.getElementById("app").style.display="none";
-  document.getElementById("loginBox").style.display="block";
-}
-
 function addItem(){
+  const date = document.getElementById("date").value;
   const desc = document.getElementById("desc").value;
   const amount = parseFloat(document.getElementById("amount").value);
   const type = document.getElementById("type").value;
+  const category = document.getElementById("category").value;
 
-  if(!desc || !amount) return;
+  if(!date || !desc || !amount) return;
 
   let data = JSON.parse(localStorage.getItem("budget")) || [];
-  data.push({desc, amount, type});
+  data.push({date, desc, amount, type, category});
   localStorage.setItem("budget", JSON.stringify(data));
 
-  document.getElementById("desc").value="";
-  document.getElementById("amount").value="";
+  loadData();
+}
 
+function loadLimitsUI(){
+  let limitSection = document.getElementById("limitSection");
+  limitSection.innerHTML = "";
+  let limits = JSON.parse(localStorage.getItem("limits")) || {};
+
+  categories.forEach(cat=>{
+    let value = limits[cat] || "";
+    limitSection.innerHTML += `
+      <div class="limitBox">
+        ${cat} Limiti:
+        <input type="number" value="${value}" onchange="saveLimit('${cat}', this.value)">
+      </div>
+    `;
+  });
+}
+
+function saveLimit(category, value){
+  let limits = JSON.parse(localStorage.getItem("limits")) || {};
+  limits[category] = parseFloat(value);
+  localStorage.setItem("limits", JSON.stringify(limits));
   loadData();
 }
 
 function loadData(){
   let data = JSON.parse(localStorage.getItem("budget")) || [];
+  let limits = JSON.parse(localStorage.getItem("limits")) || {};
+  let selectedMonth = document.getElementById("monthFilter").value;
+  let selectedCategory = document.getElementById("categoryFilter").value;
   let list = document.getElementById("list");
-  let total = 0;
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let categoryTotals = {};
+
   list.innerHTML="";
 
-  data.forEach((item,index)=>{
+  data.forEach(item=>{
+    if(selectedMonth && !item.date.startsWith(selectedMonth)) return;
+    if(selectedCategory && item.category !== selectedCategory) return;
+
     let div = document.createElement("div");
     div.className="item " + item.type;
     div.innerHTML = `
-      <span>${item.desc}</span>
-      <span>${item.type==="income" ? "+" : "-"}${item.amount} ₺</span>
+      <div>
+        <strong>${item.desc}</strong>
+        <div class="small">${item.date} - ${item.category}</div>
+      </div>
+      <div>
+        ${item.type==="income" ? "+" : "-"}${item.amount} ₺
+      </div>
     `;
     list.appendChild(div);
 
     if(item.type==="income"){
-      total += item.amount;
+      totalIncome += item.amount;
     } else {
-      total -= item.amount;
+      totalExpense += item.amount;
+      categoryTotals[item.category] = (categoryTotals[item.category] || 0) + item.amount;
     }
   });
 
-  document.getElementById("total").innerText = total;
+  document.getElementById("totalIncome").innerText = totalIncome;
+  document.getElementById("totalExpense").innerText = totalExpense;
+  document.getElementById("balance").innerText = totalIncome - totalExpense;
+
+  // Limit kontrol
+  categories.forEach(cat=>{
+    if(limits[cat]){
+      let spent = categoryTotals[cat] || 0;
+      if(spent > limits[cat]){
+        alert(cat + " limiti aşıldı!");
+      }
+    }
+  });
+}
+
+function resetData(){
+  if(confirm("Tüm veriler silinecek. Emin misin?")){
+    localStorage.removeItem("budget");
+    loadData();
+  }
+}
+
+function exportExcel(){
+  let data = JSON.parse(localStorage.getItem("budget")) || [];
+  let csv = "Tarih,Açıklama,Tutar,Tür,Kategori\n";
+  data.forEach(item=>{
+    csv += `${item.date},${item.desc},${item.amount},${item.type},${item.category}\n`;
+  });
+  let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "butce.csv";
+  link.click();
+}
+
+function logout(){
+  document.getElementById("app").style.display="none";
+  document.getElementById("loginBox").style.display="block";
 }
 </script>
 
