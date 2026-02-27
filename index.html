@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>İnce Memed Bütçe Pro</title>
 
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -15,14 +18,19 @@ button { background:black; color:white; border:none; border-radius:6px;}
 .item { display:flex; justify-content:space-between; padding:6px; border-bottom:1px solid #eee;}
 .income { color:green;}
 .expense { color:red;}
-.warning { color:orange; font-weight:bold;}
-.danger { color:red; font-weight:bold;}
+.saving { color:blue; }
 .small { font-size:12px; color:#666;}
 </style>
 </head>
 <body>
 
-<div class="container">
+<div class="container" id="loginBox">
+<h2>Giriş</h2>
+<input type="password" id="password" placeholder="Şifre">
+<button onclick="login()">Giriş Yap</button>
+</div>
+
+<div class="container" id="app" style="display:none;">
 
 <h2>İnce Memed Bütçe Pro</h2>
 
@@ -58,7 +66,7 @@ button { background:black; color:white; border:none; border-radius:6px;}
 <h3>Özet</h3>
 <p>Gelir: <span id="income">0</span></p>
 <p>Gider: <span id="expense">0</span></p>
-<p>Birikim: <span id="saving">0</span></p>
+<p>Birikim: <span id="savingTotal">0</span></p>
 <h3>Kalan: <span id="balance">0</span></h3>
 <p id="smartMessage"></p>
 
@@ -71,10 +79,34 @@ button { background:black; color:white; border:none; border-radius:6px;}
 <h3>Hareketler</h3>
 <div id="list"></div>
 
+<button onclick="logout()">Çıkış</button>
+
 </div>
 
 <script>
-document.getElementById("date").value = new Date().toISOString().split("T")[0];
+const correctPassword = "1234";
+
+function login(){
+  const pass = document.getElementById("password").value;
+  if(pass === correctPassword){
+    document.getElementById("loginBox").style.display="none";
+    document.getElementById("app").style.display="block";
+    setToday();
+    loadData();
+  } else {
+    alert("Şifre yanlış");
+  }
+}
+
+function logout(){
+  document.getElementById("app").style.display="none";
+  document.getElementById("loginBox").style.display="block";
+}
+
+function setToday(){
+  document.getElementById("date").value =
+    new Date().toISOString().split("T")[0];
+}
 
 function formatMoney(num){
   return num.toLocaleString("tr-TR") + " ₺";
@@ -86,6 +118,14 @@ function getData(){
 
 function saveData(data){
   localStorage.setItem("budgetPro", JSON.stringify(data));
+}
+
+function clearInputs(){
+  setToday();
+  document.getElementById("desc").value="";
+  document.getElementById("amount").value="";
+  document.getElementById("type").value="income";
+  document.getElementById("category").value="Market";
 }
 
 function addItem(){
@@ -100,8 +140,11 @@ function addItem(){
     category: document.getElementById("category").value
   };
 
+  if(!item.desc || !item.amount) return;
+
   data.push(item);
   saveData(data);
+  clearInputs();
   loadData();
 }
 
@@ -143,14 +186,14 @@ function loadData(){
 
   document.getElementById("income").innerText=formatMoney(income);
   document.getElementById("expense").innerText=formatMoney(expense);
-  document.getElementById("saving").innerText=formatMoney(saving);
+  document.getElementById("savingTotal").innerText=formatMoney(saving);
   document.getElementById("balance").innerText=formatMoney(income-expense-saving);
 
-  smartAnalysis(data, expense, lastExpenseDate);
+  smartAnalysis(data,lastExpenseDate);
   drawChart(income, expense);
 }
 
-function smartAnalysis(data,totalExpense,lastExpenseDate){
+function smartAnalysis(data,lastExpenseDate){
   let msg="";
   if(lastExpenseDate){
     let diff=(new Date()-new Date(lastExpenseDate))/(1000*60*60*24);
@@ -181,7 +224,9 @@ function drawChart(income, expense){
   });
 }
 
-loadData();
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
 </script>
 
 </body>
